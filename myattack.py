@@ -11,7 +11,7 @@ from attack import *
 in_path = 'original_audio/'
 save_path = 'original_to_adv/'
 target = 'we are always happy'
-iterations = 100
+iterations = 200
 pickle_path = 'pickle/original_to_adv.pickle'
 
 def main():
@@ -24,7 +24,7 @@ def main():
     dir_list = dir_list[116:117]
     for file in dir_list:
         file_path = os.path.join(in_path, file)
-        output_audio_paths.append(save_path + 'huge_adv_' + file)
+        output_audio_paths.append(save_path + 'noise_robust_adv_' + file)
         fs, audio = wav.read(file_path)
         audios.append(list(audio))
         lengths.append(len(audio))
@@ -35,12 +35,9 @@ def main():
         audios = np.array([x+[0]*(maxlen-len(x)) for x in audios])
 
         start_attack = timer()
-        attack = Attack(sess, 'CTC', len(target), maxlen,
-                    batch_size=len(audios),
-                    num_iterations=iterations)
-        delta = attack.attack(audios,
-                            lengths,
-                            [[toks.index(x) for x in target]]*len(audios))
+        attack = Attack(sess, len(target), maxlen, batch_size=len(audios),
+                        learning_rate=100, num_iterations=iterations, noise_robust=True)
+        delta = attack.attack(audios, lengths, [[toks.index(x) for x in target]]*len(audios), noise_robust=True)
 
     for i in range(len(output_audio_paths)):
         wav.write(output_audio_paths[i], 16000,

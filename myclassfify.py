@@ -67,11 +67,11 @@ toks = " abcdefghijklmnopqrstuvwxyz'-"
 path = ['original_to_adv/', 'adv_add_gaussian_white/','original_audio/','robust_adv/']
 
 def main():
-    target_path = path[3]
+    target_path = path[0]
     dir_list = os.listdir(target_path)
     dir_list.sort()
     audios = []
-    dir_list = [dir_l for dir_l in dir_list if dir_l.find('B_o') > -1]
+    dir_list = [dir_l for dir_l in dir_list if dir_l.find('no') > -1]
     # dir_list = dir_list[117:118]
     files_path = []
     for file in dir_list:
@@ -87,7 +87,7 @@ def main():
             else:
                 raise Exception("Unknown file format")
             N = len(audio)
-            # audio = audio + np.random.randn(N)* 50
+            audio = audio + np.random.randn(N)* 100
             new_input = tf.placeholder(tf.float32, [1, N])
             lengths = tf.placeholder(tf.int32, [1])
 
@@ -115,7 +115,7 @@ def test():
     dir_list = os.listdir(target_path)
     dir_list.sort()
     audios = []
-    dir_list = [dir_l for dir_l in dir_list if dir_l.find('huge') > -1]
+    dir_list = [dir_l for dir_l in dir_list if dir_l.find('no') > -1]
     # dir_list = dir_list[117:118]
     files_path = []
     for file in dir_list:
@@ -161,4 +161,5 @@ def test():
         print("\n".join(res))
 
 
-main()
+# main()
+test()

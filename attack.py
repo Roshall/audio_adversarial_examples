@@ -17,7 +17,7 @@ import struct
 import time
 import os
 import sys
-from collections import namedtuple
+import colorednoise as cn
 sys.path.append("DeepSpeech")
 
 # try:
@@ -88,7 +88,7 @@ class Attack:
         self.batch_size = batch_size
         self.phrase_length = phrase_length
         self.max_audio_len = max_audio_len
-        self.noise_class_num = 5
+        self.noise_class_num = 6
         self.frame_size = 320
         self.robust_stride = 10
         self.robust_num = 0
@@ -128,7 +128,12 @@ class Attack:
         if offset_robust:
             adversary = new_input + noise
             padding = np.zeros(self.frame_size)
-            pass_in = tf.stack([tf.concat((padding[:i], adversary[j], padding[i:]),axis=0) for j in range(self.batch_size) for i in range(0,self.frame_size+1,self.robust_stride)])
+            pass_in = tf.stack([tf.concat((padding[:i], adversary[j], padding[i:]),axis=0) for i in range(1,self.frame_size+1,self.robust_stride) for j in range(self.batch_size)])
+
+        elif noise_robust:
+            self.noise = tf.Variable(np.zeros((self.noise_class_num,max_audio_len), dtype=np.float32),name='qq_noise')
+            pass_in = tf.stack([new_input[j]+self.noise[i] for i in range(self.noise_class_num) for j in range(self.batch_size)])
+
         pass_in = tf.clip_by_value(pass_in, -2**15, 2**15-1)
         # Feed this final value to get the logits.
         self.logits = logits = get_logits(pass_in, lengths)
@@ -142,9 +147,9 @@ class Attack:
         self.ctcloss = tf.nn.ctc_loss(labels=tf.cast(target, tf.int32),
                                         inputs=logits, sequence_length=lengths)
 
-        if offset_robust:
-            loss = tf.reshape(self.ctcloss, [-1,self.robust_num])
-            self.loss = tf.reduce_mean(loss,axis=1)
+        if offset_robust or noise_robust:
+            loss = tf.reshape(self.ctcloss, [-1,self.batch_size])
+            self.loss = tf.reduce_mean(loss,axis=0)
         else:
             self.loss = self.ctcloss
         # Set up the Adam optimizer to perform gradient descent for us
@@ -166,7 +171,7 @@ class Attack:
         # self.decoded,_ = tf.nn.ctc_beam_search_decoder(logs, self.lengths, merge_repeated=False, beam_width=100)
         self.decoded, _ = tf.nn.ctc_beam_search_decoder(logits, lengths, merge_repeated=False, beam_width=100)
 
-    def attack(self, audio, lengthss, target, finetune=None):
+    def attack(self, audio, lengthss, target, finetune=None, noise_robust=False):
         lengths = [i for i in lengthss for _ in range(self.robust_num)]
         target = [i for i in target for _ in range(self.robust_num)]
         sess = self.sess
@@ -177,6 +182,8 @@ class Attack:
         # constructor. It works fine as long as you don't call
         # attack() a bunch of times.
         sess.run(tf.variables_initializer([self.delta]))
+        if noise_robust:
+            sess.run(tf.variables_initializer([self.noise]))
         sess.run(self.original.assign(np.array(audio)))
         sess.run(self.lengths.assign((np.array(lengths)-1)//320))
         sess.run(self.mask.assign(np.array([[1 if i < l else 0 for i in range(self.max_audio_len)] for l in lengthss])))
@@ -187,7 +194,7 @@ class Attack:
         # sess.run(self.importance.assign(c))
         # sess.run(self.rescale.assign(np.ones((self.batch_size,1))))
 
-        sess.run(self.rescale.assign(np.ones((self.batch_size,1))*100))
+        sess.run(self.rescale.assign(np.ones((self.batch_size,1))))
 
         # Here we'll keep track of the best solution we've found so far
         final_deltas = [None] * self.batch_size
@@ -205,12 +212,13 @@ class Attack:
             # now = time.time()
             #
             # Print out some debug information every 10 iterations.
-            if (i+1) % 40 == 0:
+            if (i+1) % 10 == 0:
                 # print(timer()-start_attack)
                 # start_attack = timer()
                 r_out,ctcloss = sess.run((self.decoded,self.ctcloss))
                 print('Iter: %d, Elapsed Time: %.3f, Iter Time: %.3f\n\tLosses: %s\n\t' % \
                       (i, time.time() - time_start, time.time() - time_last, ' '.join('% 6.2f' % x for x in ctcloss)))
+                time_last = time.time()
 
                 res = np.zeros(r_out[0].dense_shape) + len(toks) - 1
 
@@ -219,24 +227,29 @@ class Attack:
                     res[x, y] = r_out[0].values[ii]
 
                     # Here we print the strings that are recognized.
-                    res = ["".join(toks[int(x)] for x in y).replace("-", "") for y in res][::4]
-                    print("Recognition:\n\t".join(res))
+                res = ["".join(toks[int(x)] for x in y).replace("-", "") for y in res]
+                print("Recognition:\n\t"+'\n\t'.join(res))
 
                     # And here we print the argmax of the alignment.
                     # res2 = np.argmax(logits, axis=2).T
                     # res2 = ["".join(toks[int(x)] for x in y[:(l - 1) // 320]) for y, l in zip(res2, lengths)]
                     # print("\n".join(res2))
-
-            feed_dict = {}
+            if noise_robust:
+                noise = np.stack([cn.powerlaw_psd_gaussian(beta,self.max_audio_len) for beta in range(-2,3)])
+                noise = np.row_stack((noise,np.random.rand(1,self.max_audio_len)))
+                noise *= 50
+                sess.run((self.train),{self.noise:noise})
+            else:
+                feed_dict = {}
 
             # Actually do the optimization ste
-            sess.run((self.train), feed_dict)
+                sess.run((self.train), feed_dict)
 
             # Report progress
             # print("%.3f" % np.mean(cl), "\t", "\t".join("%.3f" % x for x in cl))
 
             # logits = np.argmax(logits, axis=2).T
-            if (i+1) % 20 == 0:
+            if (i+1) % 10 == 0:
                 new_input, d, r_out = sess.run((self.new_input, self.delta, self.decoded))
                 res = np.zeros(r_out[0].dense_shape) + len(toks) - 1
 
@@ -245,7 +258,7 @@ class Attack:
                     res[x, y] = r_out[0].values[ii]
 
 
-                    res = ["".join(toks[int(x)] for x in y).replace("-", "") for y in res]
+                res = ["".join(toks[int(x)] for x in y).replace("-", "") for y in res]
 
                 for ii in range(self.batch_size):
                     # Every 100 iterations, check if we've succeeded
@@ -259,7 +272,7 @@ class Attack:
                     if (count == self.robust_num) \
                             or (i == MAX - 1 and final_deltas[ii] is None):
                         # Get the current constant
-                        print(i + 1,ii,res[ii])
+                        print('Iter: %d, got sample' % i)
                         rescale = sess.run(self.rescale)
                         if rescale[ii] * 2000 > np.max(np.abs(d)):
                             # If we're already below the threshold, then
@@ -385,7 +398,6 @@ def main():
         # Set up the attack class and run it
         attack = Attack(sess, 'CTC', len(phrase), maxlen,
                         batch_size=len(audios),
-                        mp3=args.mp3,
                         learning_rate=args.lr,
                         num_iterations=args.iterations,
                         l2penalty=args.l2penalty)
