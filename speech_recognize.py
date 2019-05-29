@@ -29,10 +29,9 @@ N_FEATURES = 26
 
 # Size of the context window used for producing timesteps in the input vector
 N_CONTEXT = 9
-pickle_path = 'pickle/classify_orginal_add_w_noise.pickle'
+pickle_path = 'pickle/classify200_original_and_adv.pickle'
 models_path = 'models/'
-# audio_paths = ['original_audio/','adv_add_gaussian_white/','original_to_adv/']
-audio_paths = ['original_add_white_noise/']
+audio_pathss = ['original_audio/','adv_add_gaussian_white/','original_to_adv/','original_add_white_noise/']
 model_path = models_path + 'output_graph.pb'
 alphabet_path = models_path + 'alphabet.txt'
 lm_path = models_path + 'lm.binary'
@@ -48,13 +47,14 @@ def main():
     print('loading language model from files %s %s' % (lm_path, trie_path))
     ds.enableDecoderWithLM(alphabet_path, lm_path, trie_path, LM_WEIGHT,
                            WORD_COUNT_WEIGHT, VALID_WORD_COUNT_WEIGHT)
+    audio_paths = audio_pathss[::2][:2]
     results = [[] for i in range(len(audio_paths))]
     lengths = [[] for i in range(len(audio_paths))]
     i = 0
     for audio_path in audio_paths:
         dir_list = os.listdir(audio_path)
         dir_list.sort()
-        dir_list = dir_list[:129]
+        dir_list = dir_list[:200]
         for file in dir_list:
             file_path = os.path.join(audio_path, file)
             fs, audio = wav.read(file_path)

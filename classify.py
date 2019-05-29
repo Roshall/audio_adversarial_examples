@@ -82,7 +82,6 @@ def main():
             decoded, _ = tf.nn.ctc_beam_search_decoder(logits, lengths, merge_repeated=False, beam_width=500)
             
             length = (len(audio)-1)//320
-            l = len(audio)
             r = sess.run(decoded, {new_input: [audio],
                                    lengths: [length]})
             if len(sys.argv[i]) > 2:

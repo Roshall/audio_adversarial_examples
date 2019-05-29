@@ -60,7 +60,7 @@ def compute_mfcc(audio, **kwargs):
     width = feat.get_shape().as_list()[1]
 
     # 7. And now stick the energy next to the features
-    feat = tf.concat((tf.reshape(tf.log(energy),(-1,width,1)), feat[:, :, 1:]), axis=2)
+    feat = tf.concat((tf.reshape(tf.log(energy), (-1, width,1)), feat[:, :, 1:]), axis=2)
     
     return feat
 
@@ -79,6 +79,7 @@ def get_logits(new_input, length, first=[]):
         # Okay, so this is ugly again.
         # We just want it to not crash.
         tf.app.flags.FLAGS.alphabet_config_path = "DeepSpeech/data/alphabet.txt"
+        tf.app.flags.FLAGS.decoder_library_path = "."
         DeepSpeech.initialize_globals()
 
     batch_size = new_input.get_shape()[0]

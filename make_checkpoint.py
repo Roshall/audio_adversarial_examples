@@ -44,7 +44,7 @@ tf.load_op_library = lambda x: x
 import DeepSpeech as DeepSpeech
 
 graph_def = GraphDef()
-loaded = graph_def.ParseFromString(open("models/output_graph.pb","rb").read())
+loaded = graph_def.ParseFromString(open("models/output_graph.pb", "rb").read())
 
 with tf.Graph().as_default() as graph:
     new_input = tf.placeholder(tf.float32, [None, None, None],
@@ -73,8 +73,10 @@ with tf.Graph().as_default() as graph:
 
         # Here's where all the work happens. Copy the variables
         # over from the .pb to the session object.
+        var_list = []
         for var in tf.global_variables():
             sess.run(var.assign(sess.run('newname/'+var.name)))
+            var_list.append(var)
 
         # Test to make sure we did it right.
         res = (sess.run(logits, {new_input: [mfcc],
